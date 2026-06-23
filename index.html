@@ -1,0 +1,1277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR to Perler V3.1 - 二维码拼豆图案生成器</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --primary: #10b981;
+            --primary-dark: #059669;
+            --bg: #f9fafb;
+            --card-bg: #ffffff;
+            --text: #1f2937;
+            --text-light: #6b7280;
+            --border: #e5e7eb;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg); color: var(--text); line-height: 1.6;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+
+        .header { text-align: center; margin-bottom: 2rem; }
+        .header h1 {
+            font-size: 2.5rem; font-weight: 800;
+            background: linear-gradient(135deg, var(--primary), #3b82f6);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+        .header .subtitle { color: var(--text-light); font-size: 1.1rem; }
+
+        .version-badge {
+            display: inline-block; background: linear-gradient(135deg, #f59e0b, #ef4444);
+            color: white; padding: 0.25rem 0.75rem; border-radius: 12px;
+            font-size: 0.8rem; font-weight: 700; margin-left: 0.5rem; vertical-align: middle;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            gap: 2rem; align-items: stretch;
+        }
+        .main-grid > div {
+            display: flex; flex-direction: column; gap: 1.5rem;
+        }
+        /* 左列：第一个卡片填满剩余高度，第二个卡片自然高度+按钮置底 */
+        .main-grid > div:first-child > .card:first-child { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+        .main-grid > div:first-child > .card:first-child .upload-area { flex: 1 1 auto; aspect-ratio: auto; min-height: 200px; }
+        .main-grid > div:first-child > .card:first-child .detection-info { flex-shrink: 0; }
+        .main-grid > div:first-child > .card:last-child { flex: 0 0 auto; display: flex; flex-direction: column; }
+        .main-grid > div:first-child > .card:last-child .btn-group { margin-top: auto; }
+        /* 右侧输出卡片占满列高度 */
+        #outputCard {
+            flex: 1 1 auto;
+            display: flex; flex-direction: column;
+        }
+        #outputCard > .card-title { flex-shrink: 0; }
+        #outputCard > .output-area { flex: 1 1 auto; min-height: 300px; }
+        /* grid内卡片间距由flex gap控制，不用margin */
+        .main-grid > div > .card { margin-bottom: 0; }
+        @media (max-width: 900px) { .main-grid { grid-template-columns: 1fr; } }
+
+        .card {
+            background: var(--card-bg); border-radius: 16px; padding: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 1.5rem;
+        }
+        .card-title {
+            font-size: 1.1rem; font-weight: 700; margin-bottom: 1rem;
+            display: flex; align-items: center; gap: 0.5rem;
+        }
+
+        .upload-area {
+            border: 3px dashed var(--border); border-radius: 12px;
+            aspect-ratio: 1; text-align: center; cursor: pointer;
+            transition: all 0.3s ease; background: #fafafa; position: relative;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .upload-area:hover, .uploadArea.dragover {
+            border-color: var(--primary); background: rgba(16,185,129,0.05);
+        }
+        .upload-area.has-image { padding: 1rem; }
+        .upload-icon { font-size: 3rem; margin-bottom: 0.5rem; }
+        .upload-text { color: var(--text-light); font-size: 0.95rem; }
+        .upload-text strong { color: var(--primary); }
+
+        #fileInput { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
+
+        .preview-container { border-radius: 8px; display: none; }
+        .preview-container img { width: 100%; height: auto; object-fit: contain; }
+
+        .control-group { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
+        .control-group label {
+            font-weight: 600; font-size: 0.85rem; color: var(--text);
+            display: flex; justify-content: space-between;
+        }
+        select, input[type="range"] {
+            width: 100%; padding: 0.6rem; border: 2px solid var(--border);
+            border-radius: 8px; font-size: 0.95rem;
+        }
+        select:focus, input:focus { outline: none; border-color: var(--primary); }
+        input[type="range"] { padding: 0.3rem 0; }
+
+        .btn {
+            padding: 0.85rem 1.5rem; border: none; border-radius: 10px;
+            font-size: 0.95rem; font-weight: 700; cursor: pointer;
+            transition: all 0.2s ease; display: inline-flex;
+            align-items: center; justify-content: center; gap: 0.5rem;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white; box-shadow: 0 4px 14px rgba(16,185,129,0.4);
+        }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(16,185,129,0.5); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-secondary { background: white; color: var(--text); border: 2px solid var(--border); }
+        .btn-secondary:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+        .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-group { display: flex; gap: 0.75rem; margin-top: 0.5rem; }
+        .btn-group .btn { flex: 1; }
+
+        .output-area {
+            min-height: 300px; display: flex; align-items: center; justify-content: center;
+            background: #fafafa; border-radius: 12px; border: 2px solid var(--border);
+            overflow: auto; position: relative; padding: 1rem;
+        }
+        .output-placeholder { text-align: center; color: var(--text-light); padding: 2rem; }
+        .output-placeholder .icon { font-size: 4rem; margin-bottom: 1rem; opacity: 0.5; }
+        #outputCanvas { max-width: 100%; max-height: 100%; height: auto; width: auto; object-fit: contain; }
+
+        .bead-legend { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.75rem; margin-top: 1rem; }
+        .bead-type-item {
+            text-align: center; padding: 0.75rem 0.5rem; background: #f8f9fa;
+            border-radius: 10px; border: 2px solid transparent; transition: all 0.2s;
+        }
+        .bead-type-item.highlight { border-color: var(--primary); background: rgba(16,185,129,0.1); }
+        .bead-type-canvas { display: block; margin: 0 auto 0.5rem; }
+        .bead-type-name { font-size: 0.75rem; font-weight: 600; color: var(--text); }
+        .bead-type-count { font-size: 0.7rem; color: var(--text-light); }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.75rem; margin-top: 1rem; }
+        .stat-card { background: #f3f4f6; border-radius: 10px; padding: 0.75rem; text-align: center; }
+        .stat-value { font-size: 1.35rem; font-weight: 800; color: var(--primary); }
+        .stat-label { font-size: 0.73rem; color: var(--text-light); margin-top: 0.15rem; }
+
+        .detection-info {
+            display: none;
+            background: #ecfdf5; border-left: 4px solid var(--primary);
+            padding: 0.75rem 1rem; border-radius: 8px; margin-top: 0.75rem;
+            font-size: 0.82rem; line-height: 1.7;
+        }
+        .detection-info.show { display: block; }
+        .detection-info .info-row { display: flex; justify-content: space-between; margin: 0.15rem 0; }
+        .detection-info .info-label { color: var(--text-light); flex-shrink: 0; margin-right: 0.5rem; }
+        .detection-info .info-value { font-weight: 600; }
+
+        .loading {
+            position: absolute; inset: 0; background: rgba(255,255,255,0.92);
+            display: flex; align-items: center; justify-content: center; z-index: 10;
+        }
+        .spinner {
+            width: 50px; height: 50px; border: 4px solid var(--border);
+            border-top-color: var(--primary); border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .footer { text-align: center; margin-top: 2rem; padding: 1.5rem; color: var(--text-light); font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>二维码转豆豆</h1>
+        </header>
+
+        <div class="main-grid">
+            <div>
+                <div class="card">
+                    <h2 class="card-title">📤 上传二维码</h2>
+                    <div class="upload-area" id="uploadArea">
+                        <input type="file" id="fileInput" accept="image/*">
+                        <div id="uploadPrompt">
+                            <div class="upload-icon">📷</div>
+                            <p class="upload-text">拖拽图片或 <strong>点击选择</strong></p>
+                        </div>
+                        <div class="preview-container" id="previewContainer">
+                            <img id="previewImage" alt="预览">
+                        </div>
+                    </div>
+                    <div class="detection-info" id="detectionInfo"></div>
+                </div>
+
+                <div class="card">
+                    <h2 class="card-title">⚙️ 参数设置</h2>
+                    <div class="control-group">
+                        <label>🎨 配色方案</label>
+                        <select id="colorScheme">
+                            <option value="green">经典绿（微信风格）</option>
+                            <option value="red">中国红</option>
+                            <option value="classic">经典黑白</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label>🔲 豆子间距 <span id="gapValue">3px</span></label>
+                        <input type="range" id="gapSize" min="0" max="15" value="3">
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" id="convertBtn" disabled>🚀 转换</button>
+                        <button class="btn btn-secondary" id="downloadBtn" disabled>📥 下载</button>
+                    </div>
+                </div>
+
+            </div>
+
+            <div>
+                <div class="card" id="outputCard">
+                    <h2 class="card-title">✨ 拼豆图案</h2>
+                    <div class="output-area" id="outputArea">
+                        <div class="output-placeholder" id="placeholder">
+                            <p>上传二维码图片<br>自动识别模块数并转换为拼豆图案</p>
+                        </div>
+                        <canvas id="outputCanvas" style="display:none;"></canvas>
+                    </div>
+                </div>
+
+                <div class="card" id="legendCard" style="display:none;">
+                    <h2 class="card-title">🎲 六种豆子类型</h2>
+                    <p style="font-size:0.84rem;color:var(--text-light);margin-bottom:0.75rem;">
+                        每个豆子=2×2四宫格，4个点各黑或白。16种组合考虑旋转等价后只有6种。
+                    </p>
+                    <div class="bead-legend" id="beadLegend"></div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <p>图像本地处理</p>
+            <p style="margin-top:0.3rem;">Made with ❤️ by Wuhuixiang</p>
+        </footer>
+    </div>
+
+    <script>
+        // Canvas roundRect polyfill（兼容旧浏览器，必须在所有 Canvas 操作之前执行）
+        if (!CanvasRenderingContext2D.prototype.roundRect) {
+            CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+                if (typeof r === 'number') r = [r, r, r, r];
+                else if (!Array.isArray(r)) r = [0,0,0,0];
+                this.beginPath();
+                this.moveTo(x + r[0], y);
+                this.lineTo(x + w - r[1], y);
+                this.quadraticCurveTo(x + w, y, x + w, y + r[1]);
+                this.lineTo(x + w, y + h - r[2]);
+                this.quadraticCurveTo(x + w, y + h, x + w - r[2], y + h);
+                this.lineTo(x + r[3], y + h);
+                this.quadraticCurveTo(x, y + h, x, y + h - r[3]);
+                this.lineTo(x, y + r[0]);
+                this.quadraticCurveTo(x, y, x + r[0], y);
+                this.closePath();
+                return this;
+            };
+        }
+
+        const COLOR_SCHEMES = {
+            green:   { dark: '#14783c', light: '#f5faf0', bgDark: '#c8e6c8', bgLight: '#fffffa' },
+            blue:    { dark: '#193c82', light: '#f0f8ff', bgDark: '#c8dcf0', bgLight: '#fafcff' },
+            classic: { dark: '#000000', light: '#ffffff', bgDark: '#e0e0e0', bgLight: '#fafafa' },
+            purple:  { dark: '#5a1e82', light: '#f5f0ff', bgDark: '#e1d2f0', bgLight: '#fcf8ff' },
+            red:     { dark: '#961e1e', light: '#fff5f0', bgDark: '#f0d2d2', bgLight: '#fffaf8' },
+        };
+
+        // 标准定位图案 7x7
+        const FINDER_PATTERN = [
+            [1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,1],
+            [1,0,1,1,1,0,1],
+            [1,0,1,1,1,0,1],
+            [1,0,1,1,1,0,1],
+            [1,0,0,0,0,0,1],
+            [1,1,1,1,1,1,1],
+        ];
+
+        const BEAD_TYPES = [
+            { id: 0, name: '全白',     pattern: [[0,0],[0,0]] },
+            { id: 1, name: '单黑',     pattern: [[1,0],[0,0]] },
+            { id: 2, name: '相邻双黑', pattern: [[1,1],[0,0]] },
+            { id: 3, name: '对角双黑', pattern: [[1,0],[0,1]] },
+            { id: 4, name: '三黑',     pattern: [[1,1],[1,0]] },
+            { id: 5, name: '全黑',     pattern: [[1,1],[1,1]] },
+        ];
+
+        // 标准QR版本 → 模块数 (奇数)
+        const STANDARD_MODULES = [
+            21, 25, 29, 33, 37, 41, 45, 49, 53, 57,
+            61, 65, 69, 73, 77
+        ];
+
+        class QRToPerlerV31 {
+            constructor() {
+                this.image = null;
+                this.beads = null;
+                this.beadCounts = new Array(6).fill(0);
+                this.moduleGrid = null;
+                this.nModules = 0;
+                this.region = null;
+            }
+
+            // ========== 检测二维码区域（基于定位图案，抗干扰）==========
+            detectRegion(data, width, height) {
+                try {
+                    // Step 1: 快速检测主色调（采样加速）
+                    const dominantColor = this._detectDominantColor(data, width, height);
+
+                    // Step 2: 颜色感知灰度转换
+                    // 绿色QR码: R+B-G (绿色→暗, 白色→亮), 红色: G+B-R, 蓝色: R+G-B
+                    const gray = this._colorAwareGray(data, width, height, dominantColor);
+
+                    // Step 3: Otsu二值化
+                    const threshold = this.otsuThreshold(gray);
+
+                    const binary = new Array(height);
+                    for (let y = 0; y < height; y++) {
+                        binary[y] = new Array(width);
+                        for (let x = 0; x < width; x++) {
+                            binary[y][x] = gray[y*width+x] < threshold ? 1 : 0;
+                        }
+                    }
+
+                    // Step 3: 在每行中搜索1:1:3:1:1定位图案比例
+                    const finderCandidates = this._scanFinderPatterns(binary, width, height);
+
+                    if (finderCandidates.length >= 3) {
+                        const region = this._regionFromFinders(finderCandidates);
+                        region.color = dominantColor;
+                        return region;
+                    }
+                } catch(e) {
+                    console.warn('定位图案检测失败，回退到颜色检测:', e.message);
+                }
+
+                // Fallback: 原有的颜色检测方法（兼容纯QR图片）
+                return this._detectRegionByColor(data, width, height);
+            }
+
+            _scanFinderPatterns(binary, w, h) {
+                const candidates = [];
+                const minModuleSize = 4;  // 最小模块尺寸（像素）
+
+                // 水平扫描每行，找1:1:3:1:1模式
+                for (let y = 0; y < h; y += 2) {  // 隔行扫描加速
+                    const runs = this._findRuns(binary[y], w);
+                    if (!runs || runs.length < 11) continue;
+
+                    // 寻找连续5个run满足1:1:3:1:1近似比例
+                    for (let start = 0; start <= runs.length - 5; start++) {
+                        const [s0,s1,s2,s3,s4] = [runs[start], runs[start+1], runs[start+2], runs[start+3], runs[start+4]];
+                        if (s4.val !== s2.val) continue;  // 第1和第3段同色（黑）
+                        if (s1.val !== s0.val) continue;   // 第0/2/4段与第1/3段异色
+                        if (s3.val !== s1.val) continue;
+                        const total = s0.len + s1.len + s2.len + s3.len + s4.len;
+                        const centerSize = s2.len / total;
+                        const sideSize = (s0.len + s1.len + s3.len + s4.len) / total / 4;
+                        // 中心占比应在40%~55%，四边各约10%~17%
+                        if (total < minModuleSize * 7) continue;
+                        if (centerSize < 0.35 || centerSize > 0.60) continue;
+                        if (sideSize < 0.06 || sideSize > 0.22) continue;
+
+                        // 计算中心x坐标
+                        let cx = s0.len + s1.len + s2.len / 2;
+                        for (let k = 0; k < start; k++) cx += runs[k].len;
+
+                        // 垂直验证：检查该列的1:1:3:1:1
+                        const colRun = this._getColumnRuns(binary, cx, y, h);
+                        if (!colRun) continue;
+
+                        // 确认为定位图案候选
+                        candidates.push({
+                            x: cx,
+                            y: y,
+                            size: total,  // 近似7个模块的总像素宽度
+                            moduleSize: total / 7,
+                            score: 1 - Math.abs(centerSize - 0.44)  // 越接近44%越好
+                        });
+                    }
+                }
+
+                // 去重：合并距离太近的候选点
+                return this._mergeCandidates(candidates);
+            }
+
+            _findRuns(row, w) {
+                if (!row) return null;
+                const runs = [];
+                let val = row[0], len = 1;
+                for (let x = 1; x < w; x++) {
+                    if (row[x] === val) { len++; }
+                    else { runs.push({val, len}); val = row[x]; len = 1; }
+                }
+                runs.push({val, len});
+                return runs.length >= 5 ? runs : null;
+            }
+
+            _getColumnRuns(binary, cx, cy, h) {
+                // 检查cy上下各50像素的列，验证1:1:3:1:1模式
+                const startY = Math.max(0, cy - 50);
+                const endY = Math.min(h, cy + 50);
+                let prev = -1, len = 0;
+                let runLens = [];
+                for (let y = startY; y < endY; y++) {
+                    const v = binary[y][Math.min(cx, binary[0].length-1)];
+                    if (prev !== -1 && v === prev) { len++; }
+                    else {
+                        if (prev !== -1) runLens.push(len);
+                        prev = v;
+                        len = 1;
+                    }
+                }
+                if (prev !== -1) runLens.push(len);
+                if (runLens.length < 5) return false;
+
+                // 找最长run（应该是中间的3模块段）
+                const maxLen = Math.max(...runLens);
+                const maxIdx = runLens.indexOf(maxLen);
+                if (maxIdx === 0 || maxIdx === runLens.length - 1) return false;
+
+                // 最长run应明显大于相邻run（约3倍）
+                return maxLen > runLens[maxIdx-1] * 1.5 && maxLen > runLens[maxIdx+1] * 1.5;
+            }
+
+            _mergeCandidates(cands) {
+                if (cands.length <= 3) return cands;
+                cands.sort((a,b) => b.score - a.score);
+                const merged = [];
+                for (const c of cands) {
+                    let tooClose = false;
+                    for (const m of merged) {
+                        if (Math.abs(c.x-m.x)+Math.abs(c.y-m.y) < c.moduleSize * 3) {
+                            tooClose = true;
+                            break;
+                        }
+                    }
+                    if (!tooClose) merged.push(c);
+                    if (merged.length >= 10) break;  // 够用了
+                }
+                return merged;
+            }
+
+            _regionFromFinders(finders) {
+                // 按y排序，找最上面的定位图案
+                finders.sort((a,b) => a.y - b.y);
+                const minY = finders[0].y;
+                const ms0 = finders[0].moduleSize;
+
+                // 顶部的定位图案（y相近的）
+                const topOnes = finders.filter(f => Math.abs(f.y - minY) < ms0 * 3);
+                topOnes.sort((a,b) => a.x - b.x);
+
+                if (topOnes.length >= 2) {
+                    const tl = topOnes[0], tr = topOnes[topOnes.length - 1];
+                    const ms = (tl.moduleSize + tr.moduleSize) / 2;
+
+                    // QR宽度 = 定位图案中心距 + 7个模块（两边各3.5）
+                    const qrWidth = (tr.x - tl.x) + 7 * ms;
+
+                    // 对齐到标准模块数
+                    const estN = Math.round(qrWidth / ms);
+                    const n = STANDARD_MODULES.reduce((prev, curr) =>
+                        Math.abs(curr - estN) < Math.abs(prev - estN) ? curr : prev
+                    );
+                    const size = n * ms;
+
+                    // 左上角 = 中心 - 3.5模块（定位图案中心到外边缘是3.5个模块）
+                    const x = tl.x - 3.5 * ms;
+                    const y = tl.y - 3.5 * ms;
+
+                    return {
+                        x: Math.max(0, Math.round(x)),
+                        y: Math.max(0, Math.round(y)),
+                        size: Math.round(size),
+                        color: 'auto'
+                    };
+                }
+
+                // 只有1-2个定位图案：用单个估算（假设Version 5 = 37×37）
+                const f = finders[0];
+                const ms = f.moduleSize;
+                const size = 37 * ms;
+                return {
+                    x: Math.max(0, Math.round(f.x - 3.5 * ms)),
+                    y: Math.max(0, Math.round(f.y - 3.5 * ms)),
+                    size: Math.round(size),
+                    color: 'auto'
+                };
+            }
+
+            // ========== 快速检测主色调（采样加速）==========
+            // 注意：dark会包含黑色背景和绿色像素(luminance<100)，不能简单选最多的
+            // 当有显著的颜色(绿/蓝/红)时，优先使用颜色而非dark
+            _detectDominantColor(data, width, height) {
+                const counts = { green: 0, blue: 0, red: 0, dark: 0 };
+                const total = width * height;
+                const step = Math.max(1, Math.floor(total / 10000));
+                for (let i = 0; i < total; i += step) {
+                    const idx = i * 4;
+                    const r = data[idx], g = data[idx+1], b = data[idx+2];
+                    if (g > 80 && g > r && b < g * 0.85) counts.green++;
+                    else if (b > 80 && b > r && g < b * 0.85) counts.blue++;
+                    else if (r > 80 && r > g && b < r * 0.85) counts.red++;
+                    else if ((r + g + b) / 3 < 100) counts.dark++;
+                }
+                // 优先使用颜色（绿/蓝/红），只有当颜色都不显著时才用dark
+                const colorMax = Math.max(counts.green, counts.blue, counts.red);
+                if (colorMax > 0 && colorMax >= counts.dark * 0.1) {
+                    if (counts.green >= counts.blue && counts.green >= counts.red) return 'green';
+                    if (counts.blue >= counts.red) return 'blue';
+                    return 'red';
+                }
+                return 'dark';
+            }
+
+            // ========== 颜色感知灰度转换 ==========
+            _colorAwareGray(data, width, height, color) {
+                const gray = new Uint8Array(width * height);
+                for (let i = 0; i < width * height; i++) {
+                    const idx = i * 4;
+                    const r = data[idx], g = data[idx+1], b = data[idx+2];
+                    if (color === 'green') {
+                        gray[i] = Math.max(0, Math.min(255, r + b - g));
+                    } else if (color === 'red') {
+                        gray[i] = Math.max(0, Math.min(255, g + b - r));
+                    } else if (color === 'blue') {
+                        gray[i] = Math.max(0, Math.min(255, r + g - b));
+                    } else {
+                        gray[i] = Math.round(0.299*r + 0.587*g + 0.114*b);
+                    }
+                }
+                return gray;
+            }
+
+            // ========== Fallback: 颜色检测法 ==========
+            _detectRegionByColor(data, width, height) {
+                const masks = { green: [], blue: [], red: [], dark: [] };
+
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const idx = (y * width + x) * 4;
+                        const r = data[idx], g = data[idx+1], b = data[idx+2];
+                        if (g > 80 && g > r && b < g * 0.85) masks.green.push([x,y]);
+                        else if (b > 80 && b > r && g < b * 0.85) masks.blue.push([x,y]);
+                        else if (r > 80 && r > g && b < r * 0.85) masks.red.push([x,y]);
+                        else if ((r + g + b) / 3 < 100) masks.dark.push([x,y]);
+                    }
+                }
+
+                // 优先使用颜色（绿/蓝/红），dark会包含黑色背景+彩色像素
+                const colorMax = Math.max(masks.green.length, masks.blue.length, masks.red.length);
+                let bestName;
+                if (colorMax > 0 && colorMax >= masks.dark.length * 0.1) {
+                    if (masks.green.length >= masks.blue.length && masks.green.length >= masks.red.length) bestName = 'green';
+                    else if (masks.blue.length >= masks.red.length) bestName = 'blue';
+                    else bestName = 'red';
+                } else {
+                    bestName = 'dark';
+                }
+
+                const maskPts = masks[bestName];
+                if (!maskPts || maskPts.length === 0)
+                    return { x: 0, y: 0, size: Math.min(width, height), color: 'none' };
+
+                const rowProj = new Array(height).fill(0);
+                const colProj = new Array(width).fill(0);
+                for (const [x, y] of maskPts) { rowProj[y]++; colProj[x]++; }
+
+                const rowsWithVal = [], colsWithVal = [];
+                for (let y = 0; y < height; y++) { if (rowProj[y] >= 3) rowsWithVal.push(y); }
+                for (let x = 0; x < width; x++) { if (colProj[x] >= 3) colsWithVal.push(x); }
+
+                if (rowsWithVal.length === 0 || colsWithVal.length === 0)
+                    return { x: 0, y: 0, size: Math.min(width, height), color: bestName };
+
+                const rowSeg = this._largestSeg(rowsWithVal);
+                const colSeg = this._largestSeg(colsWithVal);
+                const segH = rowSeg[1] - rowSeg[0] + 1;
+                const segW = colSeg[1] - colSeg[0] + 1;
+                const size = Math.min(segH, segW);
+
+                let yStart = rowSeg[0], xStart = colSeg[0];
+                if (segH > size) yStart += Math.floor((segH - size) / 2);
+                if (segW > size) xStart += Math.floor((segW - size) / 2);
+
+                return { x: xStart, y: yStart, size, color: bestName };
+            }
+
+            _largestSeg(indices, maxGap = 20) {
+                if (indices.length === 0) return [0, 0];
+                let start = indices[0], prev = indices[0];
+                const segs = [];
+                for (let i = 1; i < indices.length; i++) {
+                    if (indices[i] - prev > maxGap) {
+                        segs.push([start, prev]);
+                        start = indices[i];
+                    }
+                    prev = indices[i];
+                }
+                segs.push([start, prev]);
+                segs.sort((a, b) => (b[1]-b[0]) - (a[1]-a[0]));
+                return segs[0];
+            }
+
+            // ========== Otsu大津法自动阈值 ==========
+            otsuThreshold(samples) {
+                if (!samples || samples.length === 0) return 128;
+                // 构建直方图
+                const hist = new Array(256).fill(0);
+                for (const s of samples) {
+                    const v = Math.max(0, Math.min(255, Math.round(s)));
+                    hist[v]++;
+                }
+                const total = samples.length;
+
+                // 累加计算各统计量
+                let sum = 0;
+                for (let i = 0; i < 256; i++) sum += i * hist[i];
+
+                let sumB = 0, wB = 0;
+                let maxVariance = 0, bestThreshold = 128;
+
+                for (let t = 0; t < 256; t++) {
+                    wB += hist[t];
+                    if (wB === 0) continue;
+                    const wF = total - wB;
+                    if (wF === 0) break;
+
+                    sumB += t * hist[t];
+                    const mB = sumB / wB;
+                    const mF = (sum - sumB) / wF;
+                    // 类间方差
+                    const variance = wB * wF * (mB - mF) * (mB - mF);
+                    if (variance > maxVariance) { maxVariance = variance; bestThreshold = t; }
+                }
+                return bestThreshold;
+            }
+
+            // ========== 区域精修：收紧到实际QR内容边界 ==========
+            refineQRRegion(binary, region, imgW, imgH) {
+                const { x, y, size } = region;
+                // 在区域内找QR实际内容的四边（基于模块密度/边缘频率）
+                // QR码内部有频繁的黑白交替，而外部背景通常是纯色
+
+                // 计算每行和每列的"边缘数"（相邻像素颜色变化次数）
+                const rowEdges = new Array(size).fill(0);
+                const colEdges = new Array(size).fill(0);
+
+                for (let ry = 0; ry < size && y+ry < imgH; ry++) {
+                    let edges = 0;
+                    for (let rx = 1; rx < size && x+rx < imgW; rx++) {
+                        if (binary[y+ry][x+rx] !== binary[y+ry][x+rx-1]) edges++;
+                    }
+                    rowEdges[ry] = edges;
+                }
+                for (let rx = 0; rx < size && x+rx < imgW; rx++) {
+                    let edges = 0;
+                    for (let ry = 1; ry < size && y+ry < imgH; ry++) {
+                        if (binary[y+ry][x+rx] !== binary[y+ry-1][x+rx]) edges++;
+                    }
+                    colEdges[rx] = edges;
+                }
+
+                // 找边缘密度高的连续区域（这就是QR的实际范围）
+                // 用中位数作为基准，低于中位数20%的视为背景
+                const allRowE = rowEdges.filter(e => e > 0).sort((a,b)=>a-b);
+                const allColE = colEdges.filter(e => e > 0).sort((a,b)=>a-b);
+                const rowThresh = allRowE.length > 0 ? allRowE[Math.floor(allRowE.length * 0.3)] : 2;
+                const colThresh = allColE.length > 0 ? allColE[Math.floor(allColE.length * 0.3)] : 2;
+
+                // 找上下左右边界
+                let top = 0, bottom = size - 1, left = 0, right = size - 1;
+                for (let i = 0; i < size; i++) { if (rowEdges[i] >= rowThresh) { top = i; break; } }
+                for (let i = size - 1; i >= 0; i--) { if (rowEdges[i] >= rowThresh) { bottom = i; break; } }
+                for (let i = 0; i < size; i++) { if (colEdges[i] >= colThresh) { left = i; break; } }
+                for (let i = size - 1; i >= 0; i--) { if (colEdges[i] >= colThresh) { right = i; break; } }
+
+                const newSize = Math.max(bottom - top + 1, right - left + 1);
+                // 如果精修后尺寸变化超过15%，才应用（避免过度裁剪）
+                if (newSize < size * 0.85 || newSize > size * 1.05) {
+                    return {
+                        x: x + left,
+                        y: y + top,
+                        size: newSize
+                    };
+                }
+                return null;  // 不需要精修
+            }
+
+            // ========== 用定位图案精确检测模块数 ==========
+            detectModuleCount(binary, region, imgW, imgH) {
+                const { x, y, size } = region;
+                let bestN = 25, bestScore = -1;
+
+                for (const n of STANDARD_MODULES) {
+                    const ms = size / n;
+                    if (ms < 4 || ms > 40) continue;
+                    const score = this.scoreFinder(binary, x, y, ms, imgW, imgH);
+                    if (score > bestScore) { bestScore = score; bestN = n; }
+                }
+                return { n: bestN, score: bestScore };
+            }
+
+            scoreFinder(binary, x, y, ms, imgW, imgH) {
+                let match = 0, totalCheck = 0;
+                for (let i = 0; i < 7; i++) {
+                    for (let j = 0; j < 7; j++) {
+                        const cy = Math.floor(y + (i + 0.5) * ms);
+                        const cx = Math.floor(x + (j + 0.5) * ms);
+                        if (cy < 0 || cy >= imgH || cx < 0 || cx >= imgW) continue;
+
+                        const r = Math.max(1, Math.floor(ms * 0.25));
+                        let dark = 0, cnt = 0;
+                        for (let dy = -r; dy <= r; dy += 1) {
+                            for (let dx = -r; dx <= r; dx += 1) {
+                                const py = cy + dy, px = cx + dx;
+                                if (py >= 0 && py < imgH && px >= 0 && px < imgW) {
+                                    dark += binary[py][px]; cnt++;
+                                }
+                            }
+                        }
+                        totalCheck++;
+                        if (cnt > 0 && (dark / cnt) > 0.5 && FINDER_PATTERN[i][j] === 1) match++;
+                        else if ((cnt === 0 || dark / cnt <= 0.5) && FINDER_PATTERN[i][j] === 0) match++;
+                    }
+                }
+                return totalCheck > 0 ? match / totalCheck : 0;
+            }
+
+            // ========== 边缘密度评分（用于精调区域位置）==========
+            // 原理：正确对齐时，相邻数据模块之间的跳变率稳定在~0.48
+            //       未对齐时，采样点漂移到模块边界，跳变率下降到~0.36或更低
+            // 排除三个7×7定位图案区域（角部），只统计数据区域的跳变
+            _scoreEdgeDensity(binary, x, y, size, n, imgW, imgH) {
+                const ms = size / n;
+                const r = Math.max(1, Math.floor(ms * 0.2));
+
+                // 快速提取模块网格
+                const grid = new Array(n);
+                for (let i = 0; i < n; i++) {
+                    grid[i] = new Array(n);
+                    for (let j = 0; j < n; j++) {
+                        const cy = Math.floor(y + (i + 0.5) * ms);
+                        const cx = Math.floor(x + (j + 0.5) * ms);
+                        if (cy < 0 || cy >= imgH || cx < 0 || cx >= imgW) {
+                            grid[i][j] = 0;
+                        } else {
+                            let dark = 0, cnt = 0;
+                            for (let dy = -r; dy <= r; dy++) {
+                                for (let dx = -r; dx <= r; dx++) {
+                                    const py = cy + dy, px = cx + dx;
+                                    if (py >= 0 && py < imgH && px >= 0 && px < imgW) {
+                                        dark += binary[py][px]; cnt++;
+                                    }
+                                }
+                            }
+                            grid[i][j] = cnt > 0 ? (dark / cnt > 0.5 ? 1 : 0) : 0;
+                        }
+                    }
+                }
+
+                // 计算相邻模块跳变率，排除三个角的定位图案区域
+                let transitions = 0, comparisons = 0;
+                const isFinder = (i, j) => {
+                    if (i < 7 && j < 7) return true;                      // 左上
+                    if (i < 7 && j >= n - 7) return true;                   // 右上
+                    if (i >= n - 7 && j < 7) return true;                   // 左下
+                    return false;
+                };
+
+                // 水平跳变
+                for (let i = 0; i < n; i++) {
+                    for (let j = 0; j < n - 1; j++) {
+                        if (isFinder(i, j) || isFinder(i, j + 1)) continue;
+                        comparisons++;
+                        if (grid[i][j] !== grid[i][j + 1]) transitions++;
+                    }
+                }
+                // 垂直跳变
+                for (let i = 0; i < n - 1; i++) {
+                    for (let j = 0; j < n; j++) {
+                        if (isFinder(i, j) || isFinder(i + 1, j)) continue;
+                        comparisons++;
+                        if (grid[i][j] !== grid[i + 1][j]) transitions++;
+                    }
+                }
+
+                return comparisons > 0 ? transitions / comparisons : 0;
+            }
+
+            // ========== 精修区域位置（用边缘密度评分）==========
+            // 颜色检测给出的区域是近似的，复杂背景(如手机截图)可能偏移10px以上
+            // 边缘密度评分在正确对齐时跳变率~0.48，未对齐时降低
+            // 两阶段搜索：粗搜索(step=2) → 精搜索(step=1)围绕最优位置
+            // 搜索范围±10px，覆盖手机截图等复杂场景的区域偏差
+            refineRegionPosition(binary, region, n, imgW, imgH) {
+                const posRange = 10;
+                const sizeRange = 3;
+                let bestX = region.x, bestY = region.y, bestSize = region.size, bestScore = -1;
+
+                // Phase 1: 粗搜索 (step=2)
+                for (let dSize = -sizeRange; dSize <= sizeRange; dSize += 2) {
+                    const testSize = region.size + dSize;
+                    for (let dy = -posRange; dy <= posRange; dy += 2) {
+                        for (let dx = -posRange; dx <= posRange; dx += 2) {
+                            const score = this._scoreEdgeDensity(binary, region.x + dx, region.y + dy, testSize, n, imgW, imgH);
+                            if (score > bestScore) {
+                                bestScore = score;
+                                bestX = region.x + dx;
+                                bestY = region.y + dy;
+                                bestSize = testSize;
+                            }
+                        }
+                    }
+                }
+
+                // Phase 2: 精搜索围绕粗搜索最优位置 (step=1)
+                for (let dSize = -1; dSize <= 1; dSize++) {
+                    const testSize = bestSize + dSize;
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dx = -1; dx <= 1; dx++) {
+                            const score = this._scoreEdgeDensity(binary, bestX + dx, bestY + dy, testSize, n, imgW, imgH);
+                            if (score > bestScore) {
+                                bestScore = score;
+                                bestX = bestX + dx;
+                                bestY = bestY + dy;
+                                bestSize = testSize;
+                            }
+                        }
+                    }
+                }
+
+                return {
+                    x: Math.round(bestX),
+                    y: Math.round(bestY),
+                    size: Math.round(bestSize),
+                    color: region.color
+                };
+            }
+
+            // ========== 提取模块网格 ==========
+            extractGrid(binary, region, n, imgW, imgH) {
+                const { x, y, size } = region;
+                const ms = size / n;
+                const grid = [];
+
+                for (let i = 0; i < n; i++) {
+                    const row = [];
+                    for (let j = 0; j < n; j++) {
+                        const cy = Math.floor(y + (i + 0.5) * ms);
+                        const cx = Math.floor(x + (j + 0.5) * ms);
+                        if (cy < 0 || cy >= imgH || cx < 0 || cx >= imgW) { row.push(0); continue; }
+
+                        const r = Math.max(1, Math.floor(ms * 0.3));
+                        let dark = 0, cnt = 0;
+                        for (let dy = -r; dy <= r; dy += 1) {
+                            for (let dx = -r; dx <= r; dx += 1) {
+                                const py = cy + dy, px = cx + dx;
+                                if (py >= 0 && py < imgH && px >= 0 && px < imgW) {
+                                    dark += binary[py][px]; cnt++;
+                                }
+                            }
+                        }
+                        row.push(cnt > 0 ? (dark / cnt > 0.5 ? 1 : 0) : 0);
+                    }
+                    grid.push(row);
+                }
+                return grid;
+            }
+
+            // ========== 2×2模块 → 豆子 ==========
+            modulesToBeads(grid) {
+                const n = grid.length;
+                const br = Math.ceil(n / 2), bc = Math.ceil(n / 2);
+                const padded = Array.from({ length: br * 2 }, () => new Array(bc * 2).fill(0));
+                for (let i = 0; i < n; i++)
+                    for (let j = 0; j < n; j++)
+                        padded[i][j] = grid[i][j];
+
+                const beads = [];
+                this.beadCounts.fill(0);
+
+                for (let bi = 0; bi < br; bi++) {
+                    const row = [];
+                    for (let bj = 0; bj < bc; bj++) {
+                        const A = padded[bi*2][bj*2], B = padded[bi*2][bj*2+1];
+                        const C = padded[bi*2+1][bj*2], D = padded[bi*2+1][bj*2+1];
+                        const dots = [[A,B],[C,D]];
+                        const t = this.classify(A,B,C,D);
+                        this.beadCounts[t]++;
+                        row.push({ type: t, dots });
+                    }
+                    beads.push(row);
+                }
+                return beads;
+            }
+
+            classify(A,B,C,D) {
+                const c = A+B+C+D;
+                if (c === 0) return 0; if (c === 4) return 5;
+                if (c === 1) return 1; if (c === 3) return 4;
+                if ((A&&D) || (B&&C)) return 3;
+                return 2;
+            }
+
+            // ========== 渲染（关键修复：无分隔线）==========
+            render(canvas, beads, options = {}) {
+                const { gap = 3, colorScheme = 'green' } = options;
+                const colors = COLOR_SCHEMES[colorScheme];
+                const beadSize = 28; // 固定
+
+                const rows = beads.length;
+                const cols = beads[0] ? beads[0].length : 0;
+                if (rows === 0 || cols === 0) return false;
+
+                canvas.width = cols * (beadSize + gap) + gap;
+                canvas.height = rows * (beadSize + gap) + gap;
+
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#e6e6e6';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // 豆子内四宫格的尺寸（无间隔紧密排列）
+                const dotSize = Math.floor(beadSize / 2);
+
+                for (let ri = 0; ri < rows; ri++) {
+                    for (let ci = 0; ci < cols; ci++) {
+                        const bead = beads[ri][ci];
+                        const cx = gap + ci * (beadSize + gap) + beadSize / 2;
+                        const cy = gap + ri * (beadSize + gap) + beadSize / 2;
+
+                        const hasDark = bead.type !== 0;
+                        const bg = hasDark ? colors.bgDark : colors.bgLight;
+                        const halfR = beadSize / 2;
+
+                        // 豆子底色（圆角矩形效果）
+                        ctx.fillStyle = bg;
+                        this.roundRect(ctx, cx - halfR, cy - halfR, beadSize, beadSize, 4);
+                        ctx.strokeStyle = '#bbb';
+                        ctx.lineWidth = 1;
+                        this.roundRect(ctx, cx - halfR, cy - halfR, beadSize, beadSize, 4);
+                        ctx.stroke();
+
+                        // 四宫格4个点 —— 紧密排列，无分隔线！
+                        const dots = bead.dots;
+                        // A=左上 B=右上 C=左下 D=右下
+                        // 每个点是 dotSize × dotSize 的实心方块
+                        const offsets = [
+                            [-1, -1, dots[0][0]],
+                            [ 1, -1, dots[0][1]],
+                            [-1,  1, dots[1][0]],
+                            [ 1,  1, dots[1][1]],
+                        ];
+
+                        for (const [ox, oy, val] of offsets) {
+                            // 点的位置：从中心偏移 dotSize/2
+                            const px = cx + ox * (dotSize / 2);
+                            const py = cy + oy * (dotSize / 2);
+                            const d = dotSize / 2;
+
+                            // 实心填充，无边框
+                            ctx.fillStyle = val === 1 ? colors.dark : colors.light;
+                            ctx.fillRect(px - d, py - d, dotSize, dotSize);
+                            // 不画 strokeRect！（用户要求无分隔线）
+                        }
+                    }
+                }
+                return true;
+            }
+
+            roundRect(ctx, x, y, w, h, r) {
+                if (w < 2*r) r = w / 2;
+                if (h < 2*r) r = h / 2;
+                ctx.beginPath();
+                ctx.moveTo(x+r, y);
+                ctx.arcTo(x+w, y, x+w, y+h, r);
+                ctx.arcTo(x+w, y+h, x, y+h, r);
+                ctx.arcTo(x, y+h, x+r, y, r);
+                ctx.closePath();
+            }
+        }
+
+        // ============================================
+        // UI Controller V3.1
+        // ============================================
+        const converter = new QRToPerlerV31();
+        const $ = id => document.getElementById(id);
+
+        function initBeadLegend() {
+            const legend = $('beadLegend');
+            legend.innerHTML = '';
+            BEAD_TYPES.forEach(t => {
+                const item = document.createElement('div');
+                item.className = 'bead-type-item';
+                item.id = `bead-type-${t.id}`;
+                const canvas = document.createElement('canvas');
+                canvas.className = 'bead-type-canvas';
+                canvas.width = 44; canvas.height = 44;
+                item.appendChild(canvas);
+                const name = document.createElement('div');
+                name.className = 'bead-type-name';
+                name.textContent = t.name;
+                item.appendChild(name);
+                const count = document.createElement('div');
+                count.className = 'bead-type-count';
+                count.id = `bead-count-${t.id}`;
+                count.textContent = '0 个';
+                item.appendChild(count);
+                legend.appendChild(item);
+                drawBeadTypeNoLine(canvas.getContext('2d'), t.pattern, 44, $('colorScheme').value);
+            });
+        }
+
+        // 绘制豆子图例（无分隔线版）
+        function drawBeadTypeNoLine(ctx, pattern, size, scheme) {
+            const colors = COLOR_SCHEMES[scheme];
+            ctx.clearRect(0, 0, size, size);
+            const dotSize = Math.floor(size / 2);
+            const ds = dotSize / 2;
+            const cx = size / 2, cy = size / 2;
+            const hasDark = pattern.flat().includes(1);
+            ctx.fillStyle = hasDark ? colors.bgDark : colors.bgLight;
+            ctx.beginPath();
+            ctx.roundRect(0, 0, size, size, 6);
+            ctx.fill();
+            const offsets = [[-1,-1,pattern[0][0]],[1,-1,pattern[0][1]],[-1,1,pattern[1][0]],[1,1,pattern[1][1]]];
+            for (const [ox, oy, val] of offsets) {
+                const px = cx + ox*(dotSize/2), py = cy + oy*(dotSize/2);
+                ctx.fillStyle = val===1 ? colors.dark : colors.light;
+                ctx.fillRect(px-ds, py-ds, dotSize, dotSize);
+            }
+        }
+
+        initBeadLegend();
+
+        $('fileInput').addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (!file || !file.type.startsWith('image/')) return;
+            const reader = new FileReader();
+            reader.onload = ev => {
+                $('previewImage').src = ev.target.result;
+                $('previewImage').onload = () => {
+                    $('previewContainer').style.display = 'block';
+                    $('uploadPrompt').style.display = 'none';
+                    $('uploadArea').classList.add('has-image');
+                    $('convertBtn').disabled = false;
+                    converter.image = $('previewImage');
+                    $('convertBtn').click(); // 自动转换
+                };
+            };
+            reader.readAsDataURL(file);
+        });
+
+        ['dragover','dragleave','drop'].forEach(evt => {
+            $('uploadArea').addEventListener(evt, e => {
+                if (evt === 'dragover') e.preventDefault();
+                else if (evt === 'dragleave') $('uploadArea').classList.remove('dragover');
+                else if (evt === 'drop') {
+                    e.preventDefault(); $('uploadArea').classList.remove('dragover');
+                    const file = e.dataTransfer.files[0];
+                    if (file?.type.startsWith('image')) {
+                        $('fileInput').files = e.dataTransfer.files;
+                        $('fileInput').dispatchEvent(new Event('change'));
+                    }
+                }
+            });
+        });
+
+        $('gapSize').addEventListener('input', e => $('gapValue').textContent = e.target.value + 'px');
+
+        $('colorScheme').addEventListener('change', () => {
+            const s = $('colorScheme').value;
+            BEAD_TYPES.forEach(t => {
+                const cv = document.querySelector(`#bead-type-${t.id} canvas`);
+                if (cv) drawBeadTypeNoLine(cv.getContext('2d'), t.pattern, 44, s);
+            });
+            if (converter.beads) {
+                converter.render($('outputCanvas'), converter.beads, {
+                    gap: parseInt($('gapSize').value), colorScheme: s
+                });
+            }
+        });
+
+        $('gapSize').addEventListener('change', () => {
+            if (converter.beads) {
+                converter.render($('outputCanvas'), converter.beads, {
+                    gap: parseInt($('gapSize').value), colorScheme: $('colorScheme').value
+                });
+            }
+        });
+
+        $('convertBtn').addEventListener('click', () => {
+            if (!converter.image) return;
+            showLoading(true);
+            setTimeout(() => {
+                try {
+                    const img = converter.image;
+                    const tc = document.createElement('canvas');
+                    const tctx = tc.getContext('2d');
+                    tc.width = img.naturalWidth || img.width;
+                    tc.height = img.naturalHeight || img.height;
+                    tctx.drawImage(img, 0, 0);
+                    const data = tctx.getImageData(0, 0, tc.width, tc.height);
+
+                    // 1. 检测区域（定位图案优先，抗干扰）
+                    const region = converter.detectRegion(data.data, tc.width, tc.height);
+                    converter.region = region;
+
+                    // 2. 颜色感知灰度转换 + Otsu二值化
+                    // 如果颜色不明确（dark/auto/none），在区域内二次检测
+                    let qrColor = region.color;
+                    if (!qrColor || qrColor === 'dark' || qrColor === 'auto' || qrColor === 'none') {
+                        const rSize = region.size;
+                        const rStep = Math.max(1, Math.floor(rSize / 50));
+                        let rCounts = { green: 0, blue: 0, red: 0, dark: 0 };
+                        for (let ry = Math.max(0, region.y); ry < Math.min(tc.height, region.y + rSize); ry += rStep) {
+                            for (let rx = Math.max(0, region.x); rx < Math.min(tc.width, region.x + rSize); rx += rStep) {
+                                const ridx = (ry * tc.width + rx) * 4;
+                                const rr = data.data[ridx], rg = data.data[ridx+1], rb = data.data[ridx+2];
+                                if (rg > 80 && rg > rr && rb < rg * 0.85) rCounts.green++;
+                                else if (rb > 80 && rb > rr && rg < rb * 0.85) rCounts.blue++;
+                                else if (rr > 80 && rr > rg && rb < rr * 0.85) rCounts.red++;
+                                else if ((rr + rg + rb) / 3 < 100) rCounts.dark++;
+                            }
+                        }
+                        let bestColor = 'dark', bestCnt = 0;
+                        for (const [c, n] of Object.entries(rCounts)) {
+                            if (n > bestCnt) { bestCnt = n; bestColor = c; }
+                        }
+                        qrColor = bestColor;
+                        region.color = qrColor;
+                    }
+                    const grayArr = new Uint8Array(tc.width * tc.height);
+                    for (let i = 0; i < tc.width * tc.height; i++) {
+                        const idx = i * 4;
+                        const r = data.data[idx], g = data.data[idx+1], b = data.data[idx+2];
+                        if (qrColor === 'green') {
+                            grayArr[i] = Math.max(0, Math.min(255, r + b - g));
+                        } else if (qrColor === 'red') {
+                            grayArr[i] = Math.max(0, Math.min(255, g + b - r));
+                        } else if (qrColor === 'blue') {
+                            grayArr[i] = Math.max(0, Math.min(255, r + g - b));
+                        } else {
+                            grayArr[i] = Math.round(0.299*r + 0.587*g + 0.114*b);
+                        }
+                    }
+
+                    // 在检测区域内采样Otsu阈值
+                    let regionSamples = [];
+                    for (let y = Math.max(0,region.y); y < Math.min(tc.height, region.y+region.size); y++) {
+                        for (let x = Math.max(0,region.x); x < Math.min(tc.width, region.x+region.size); x++) {
+                            regionSamples.push(grayArr[y * tc.width + x]);
+                        }
+                    }
+                    const threshold = converter.otsuThreshold(regionSamples);
+
+                    const binary = [];
+                    for (let y = 0; y < tc.height; y++) {
+                        const row = [];
+                        for (let x = 0; x < tc.width; x++) {
+                            row.push(grayArr[y * tc.width + x] < threshold ? 1 : 0);
+                        }
+                        binary.push(row);
+                    }
+
+                    // 3. 定位图案检测模块数
+                    const { n, score } = converter.detectModuleCount(binary, region, tc.width, tc.height);
+                    converter.nModules = n;
+
+                    // 3.5. 区域位置精修（带安全检查）
+                    // 边缘密度评分搜索最佳位置，但只在结果更接近50%暗模块时采用
+                    const gridBefore = converter.extractGrid(binary, region, n, tc.width, tc.height);
+                    const darkBefore = gridBefore.flat().reduce((a,b) => a+b, 0);
+                    const totalModules = n * n;
+                    const ratioBefore = darkBefore / totalModules;
+
+                    const refinedRegion = converter.refineRegionPosition(binary, region, n, tc.width, tc.height);
+                    const gridAfter = converter.extractGrid(binary, refinedRegion, n, tc.width, tc.height);
+                    const darkAfter = gridAfter.flat().reduce((a,b) => a+b, 0);
+                    const ratioAfter = darkAfter / totalModules;
+
+                    // QR码的掩码步骤会尽量使暗模块比例接近50%
+                    // 只在精修结果明显更接近50%时才采用（差值>5个百分点）
+                    const useRefined = Math.abs(ratioAfter - 0.5) < Math.abs(ratioBefore - 0.5) - 0.05;
+                    converter.region = useRefined ? refinedRegion : region;
+                    converter.moduleGrid = useRefined ? gridAfter : gridBefore;
+
+                    // 5. 转豆子
+                    converter.beads = converter.modulesToBeads(converter.moduleGrid);
+
+                    // 6. 渲染（无分隔线）
+                    const ok = converter.render($('outputCanvas'), converter.beads, {
+                        gap: parseInt($('gapSize').value),
+                        colorScheme: $('colorScheme').value
+                    });
+
+                    if (!ok) throw new Error('渲染失败');
+
+                    $('placeholder').style.display = 'none';
+                    $('outputCanvas').style.display = 'block';
+
+                    const br = converter.beads.length;
+                    const bc = converter.beads[0]?.length || 0;
+                    const totalDots = br * bc * 4;
+                    const totalMods = n * n;
+
+                    $('detectionInfo').innerHTML = `
+                        <div class="info-row"><span class="info-label">检测颜色:</span><span class="info-value">${converter.region.color}</span></div>
+                        <div class="info-row"><span class="info-label">区域位置:</span><span class="info-value">(${converter.region.x}, ${converter.region.y}) ${converter.region.size}×${converter.region.size}px</span></div>
+                        <div class="info-row"><span class="info-label">定位图案匹配:</span><span class="info-value">${(score*100).toFixed(1)}%</span></div>
+                        <div class="info-row"><span class="info-label">横纵模块数:</span><span class="info-value">${n} × ${n} = ${totalMods}</span></div>
+                        <div class="info-row"><span class="info-label">暗模块:</span><span class="info-value">${useRefined ? darkAfter : darkBefore} / ${totalMods} (${((useRefined ? ratioAfter : ratioBefore)*100).toFixed(1)}%) ${useRefined ? '[精修]' : '[原始]'}</span></div>
+                        <div class="info-row"><span class="info-label">豆子网格:</span><span class="info-value">${bc}×${br} = ${br*bc}</span></div>
+                        <div class="info-row"><span class="info-label">总点数:</span><span class="info-value">${totalDots} (≥${totalMods})</span></div>
+                    `;
+                    $('detectionInfo').classList.add('show');
+
+                    BEAD_TYPES.forEach(t => {
+                        const el = $(`bead-count-${t.id}`);
+                        if (el) el.textContent = `${converter.beadCounts[t.id]} 个`;
+                        $(`bead-type-${t.id}`).classList.toggle('highlight', converter.beadCounts[t.id] > 0);
+                    });
+                    $('legendCard').style.display = 'block';
+                    $('downloadBtn').disabled = false;
+                    adjustLayout();
+
+                } catch (err) {
+                    console.error(err);
+                    alert('转换失败: ' + err.message);
+                }
+                showLoading(false);
+            }, 50);
+        });
+
+        $('downloadBtn').addEventListener('click', () => {
+            const link = document.createElement('a');
+            link.download = `perler_pattern_v3_${Date.now()}.png`;
+            link.href = $('outputCanvas').toDataURL('image/png');
+            link.click();
+        });
+
+        function showLoading(show) {
+            const area = $('outputArea');
+            let loading = area.querySelector('.loading');
+            if (show && !loading) {
+                loading = document.createElement('div');
+                loading.className = 'loading';
+                loading.innerHTML = '<div class="spinner"></div>';
+                area.appendChild(loading);
+            } else if (!show && loading) loading.remove();
+        }
+
+        // 强制左右列等高（CSS grid stretch的JS保底）
+        function adjustLayout() {
+            const leftCol = document.querySelector('.main-grid > div:first-child');
+            const rightCol = document.querySelector('.main-grid > div:last-child');
+            if (leftCol && rightCol) {
+                // CSS stretch已经处理了大部分情况，这里只做保底
+                const leftH = leftCol.offsetHeight;
+                const rightH = rightCol.offsetHeight;
+                const maxH = Math.max(leftH, rightH);
+                leftCol.style.minHeight = maxH + 'px';
+                rightCol.style.minHeight = maxH + 'px';
+            }
+        }
+        window.addEventListener('load', adjustLayout);
+        window.addEventListener('resize', adjustLayout);
+    </script>
+</body>
+</html>
